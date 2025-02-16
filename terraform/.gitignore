@@ -1,0 +1,10 @@
+configuraciones_terraform/.terraform.lock.hcl
+configuraciones_terraform/.terraform.tfstate.lock.info
+configuraciones_terraform/terraform.tfstate
+configuraciones_terraform/terraform.tfstate.backup
+configuraciones_terraform/.terraform/providers/registry.terraform.io/hashicorp/tls/4.0.6/windows_amd64/terraform-provider-tls_v4.0.6_x5.exe
+/configuraciones_terraform/.terraform
+/configuraciones_terraform/.ssh
+configuraciones_servicios/vpc.tf
+configuraciones_servicios/CrearInstanciaUbuntu.tf.txt
+configuraciones_terraform/laboratoriosinbd.tf

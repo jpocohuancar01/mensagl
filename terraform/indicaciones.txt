@@ -1,0 +1,8 @@
+archivo principal en la carpeta 
+/configuraciones_terraform/laboratorios224.tf
+
+-Se carga en visual studio 
+-Desde una consola ubicarnos en la carpeta del archivo principal
+- ejecutar terraform init
+- terraform plan
+- terraform aplly
