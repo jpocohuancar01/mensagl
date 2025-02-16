@@ -1,0 +1,536 @@
+
+#=======================#
+#    CLAVE SSH
+#=======================#
+
+#Generación de la clave SSH localmente:
+ssh-keygen -t rsa -b 2048 -f ~/.ssh/ssh-mensagl-2025-julio224
+
+#Crear el par de claves en AWS:
+aws ec2 import-key-pair --key-name "ssh-mensagl-2025-julio224" --public-key-material file://~/.ssh/ssh-mensagl-2025-julio224.pub --region us-east-1
+
+#Consultar las claves disponibles en AWS:
+aws ec2 describe-key-pairs --query "KeyPairs[?KeyName=='ssh-mensagl-2025-julio224'].KeyName" --region us-east-1
+
+
+#=======================#
+#    Crear la VPC
+#=======================#
+aws ec2 create-vpc --cidr-block 10.224.0.0/16 --enable-dns-support --enable-dns-hostnames
+
+#Obtener la ID de la VPC creada:
+VPC_ID=$(aws ec2 describe-vpcs --filters "Name=cidr,Values=10.224.0.0/16" --query "Vpcs[0].VpcId" --output text)
+
+#Parte 2: Crear Subnets Públicas y Privadas
+aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.224.1.0/24 --availability-zone us-east-1a --map-public-ip-on-launch
+
+#Crear Subnet Privada 1:
+aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.224.2.0/24 --availability-zone us-east-1a
+
+#Crear Subnet Privada 2:
+aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.224.3.0/24 --availability-zone us-east-1b
+
+
+#Parte 3: Crear Internet Gateway
+
+#Crear Internet Gateway
+aws ec2 create-internet-gateway
+
+#Asociar Internet Gateway con la VPC:
+IGW_ID=$(aws ec2 describe-internet-gateways --query "InternetGateways[?Attachments[?VpcId=='$VPC_ID']].InternetGatewayId" --output text)
+aws ec2 attach-internet-gateway --vpc-id $VPC_ID --internet-gateway-id $IGW_ID
+
+#Parte 4: Asignación de Etiquetas a los Recursos
+
+#Etiquetar la VPC:
+aws ec2 create-tags --resources $VPC_ID --tags Key=Name,Value="vpc-mensagl-2025-julio224-vpc"
+
+#Etiquetar la Subnet Pública 1:
+SUBNET_PUBLIC1_ID=$(aws ec2 describe-subnets --filters "Name=cidr-block,Values=10.224.1.0/24" --query "Subnets[0].SubnetId" --output text)
+aws ec2 create-tags --resources $SUBNET_PUBLIC1_ID --tags Key=Name,Value="vpc-mensagl-2025-julio224-subnet-public1-us-east-1a"
+
+
+#Etiquetar la Subnet Privada 1
+SUBNET_PRIVATE1_ID=$(aws ec2 describe-subnets --filters "Name=cidr-block,Values=10.224.2.0/24" --query "Subnets[0].SubnetId" --output text)
+aws ec2 create-tags --resources $SUBNET_PRIVATE1_ID --tags Key=Name,Value="vpc-mensagl-2025-julio224-subnet-private1-us-east-1a"
+
+#Etiquetar la Subnet Privada 2:
+SUBNET_PRIVATE2_ID=$(aws ec2 describe-subnets --filters "Name=cidr-block,Values=10.224.3.0/24" --query "Subnets[0].SubnetId" --output text)
+aws ec2 create-tags --resources $SUBNET_PRIVATE2_ID --tags Key=Name,Value="vpc-mensagl-2025-julio224-subnet-private2-us-east-1b"
+
+#Etiquetar el Internet Gateway:
+aws ec2 create-tags --resources $IGW_ID --tags Key=Name,Value="vpc-mensagl-2025-julio224-igw"
+
+#============================#
+#    grupos de seguridad
+#============================#
+
+#Paso 1: Crear un Grupo de Seguridad para nginx
+aws ec2 create-security-group --group-name sg_nginx --description "Grupo de seguridad para nginx" --vpc-id <vpc-id> --region us-east-1
+# Agregar reglas de ingreso para nginx
+aws ec2 authorize-security-group-ingress --group-name sg_nginx --protocol tcp --port 22 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_nginx --protocol tcp --port 443 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_nginx --protocol tcp --port 80 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_nginx --protocol tcp --port 3306 --cidr 10.224.0.0/16 --region us-east-1
+# Agregar regla de egreso
+aws ec2 authorize-security-group-egress --group-name sg_nginx --protocol -1 --port 0 --cidr 0.0.0.0/0 --region us-east-1
+
+
+#Paso 2: Crear un Grupo de Seguridad para el CMS
+aws ec2 create-security-group --group-name sg_cms --description "Security group for CMS cluster" --vpc-id <vpc-id> --region us-east-1
+# Agregar reglas de ingreso para CMS
+aws ec2 authorize-security-group-ingress --group-name sg_cms --protocol tcp --port 22 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_cms --protocol tcp --port 443 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_cms --protocol tcp --port 80 --cidr 0.0.0.0/0 --region us-east-1
+# Agregar regla de egreso
+aws ec2 authorize-security-group-egress --group-name sg_cms --protocol -1 --port 0 --cidr 0.0.0.0/0 --region us-east-1
+
+
+#Paso 3: Crear un Grupo de Seguridad para MySQL
+aws ec2 create-security-group --group-name sg_mysql --description "Grupo de seguridad para MySQL" --vpc-id <vpc-id> --region us-east-1
+# Agregar reglas de ingreso para MySQL
+aws ec2 authorize-security-group-ingress --group-name sg_mysql --protocol tcp --port 22 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_mysql --protocol tcp --port 3306 --cidr 0.0.0.0/0 --region us-east-1
+# Agregar regla de egreso
+aws ec2 authorize-security-group-egress --group-name sg_mysql --protocol -1 --port 0 --cidr 0.0.0.0/0 --region us-east-1
+
+
+#Paso 4: Crear un Grupo de Seguridad para NAS
+aws ec2 create-security-group --group-name sg_nas --description "Grupo de seguridad para NAS" --vpc-id <vpc-id> --region us-east-1
+# Agregar reglas de ingreso para NAS
+aws ec2 authorize-security-group-ingress --group-name sg_nas --protocol tcp --port 22 --cidr 0.0.0.0/0 --region us-east-1
+# Agregar regla de egreso
+aws ec2 authorize-security-group-egress --group-name sg_nas --protocol -1 --port 0 --cidr 0.0.0.0/0 --region us-east-1
+
+
+#Paso 5: Crear un Grupo de Seguridad para XMPP Openfire
+aws ec2 create-security-group --group-name sg_xmpp --description "Grupo de seguridad para XMPP Openfire" --vpc-id <vpc-id> --region us-east-1
+
+# Agregar reglas de ingreso para XMPP Openfire
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 22 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 5222 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 9090 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 7777 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 5262 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 5269 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 80 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 443 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 7443 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol tcp --port 7070 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol udp --port 26001-27000 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol udp --port 50000-55000 --cidr 0.0.0.0/0 --region us-east-1
+aws ec2 authorize-security-group-ingress --group-name sg_xmpp --protocol udp --port 9999 --cidr 0.0.0.0/0 --region us-east-1
+# Agregar regla de egreso
+aws ec2 authorize-security-group-egress --group-name sg_xmpp --protocol -1 --port 0 --cidr 0.0.0.0/0 --region us-east-1
+
+
+#==================================#
+#    creacion de Instancia Nginx
+#==================================#
+#Paso 1:Paso 1: Crear la clave SSH 
+# Paso 2: Crear la instancia EC2 de Nginx
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id aws_subnet.public1.id \
+  --key-name ssh-mensagl-2025-julio224 \
+  --security-group-ids <sg-nginx-id> <sg-xmpp-id> \
+  --associate-public-ip-address \
+  --private-ip-address 10.224.1.10 \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Nginx}]' \
+  --region us-east-1
+
+#Paso 3: Copiar archivos a la instancia EC2 usando spc
+#Archivo nginx.sh:
+scp -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../scripts_servicios/nginx.sh ubuntu@<public-ip-instance>:/home/ubuntu/nginx.sh
+
+#Archivo de clave PEM:
+scp -i ~/.ssh/ssh-mensagl-2025-julio224.pem .ssh/ssh-mensagl-2025-julio224.pem ubuntu@<public-ip-instance>:/home/ubuntu/clave.pem
+
+#Archivo default de configuración de Nginx:
+scp -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../configuraciones_servicios/nginx/default ubuntu@<public-ip-instance>:/home/ubuntu/default
+
+#Paso 4: Ejecutar comandos remotos en la instancia EC2 para configurar Nginx
+ssh -i ~/.ssh/ssh-mensagl-2025-julio224.pem ubuntu@<public-ip-instance> << 'EOF'
+chmod +x /home/ubuntu/nginx.sh
+sudo /home/ubuntu/nginx.sh
+EOF
+
+
+#==================================#
+#    creacion de Instancia Nginx fallback
+#==================================#
+#Paso 1: Crear la clave SSH
+#Paso 2: Crear la instancia EC2 de Wordpress
+
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id aws_subnet.public1.id \
+  --key-name ssh-mensagl-2025-julio224 \
+  --security-group-ids <sg-nginx-id> <sg-xmpp-id> \
+  --associate-public-ip-address \
+  --private-ip-address 10.224.1.20 \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Nginx_Fallback}]' \
+  --region us-east-1
+
+
+#Paso 3: Copiar archivos de configuración a la instancia
+#Script nginxfallback.sh:
+scp -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../scripts_servicios/nginxfallback.sh ubuntu@<public-ip-instance>:/home/ubuntu/nginxfallback.sh
+
+#Clave SSH para conexión interna:
+scp -i ~/.ssh/ssh-mensagl-2025-julio224.pem ~/.ssh/ssh-mensagl-2025-julio224.pem ubuntu@<public-ip-instance>:/home/ubuntu/clave.pem
+
+#Archivo default de configuración de Nginx:
+scp -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../configuraciones_servicios/nginx/default ubuntu@<public-ip-instance>:/home/ubuntu/default
+
+#Archivo nginx.conf:
+scp -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../configuraciones_servicios/nginx/nginx.conf ubuntu@<public-ip-instance>:/home/ubuntu/nginx.conf
+
+#Paso 4: Ejecutar el script remotamente en la instancia
+ssh -i ~/.ssh/ssh-mensagl-2025-julio224.pem ubuntu@<public-ip-instance> << 'EOF'
+chmod +x /home/ubuntu/nginxfallback.sh
+sudo /home/ubuntu/nginxfallback.sh
+EOF
+
+#==================================#
+#    creacion de Instancia wordpress
+#==================================#
+#Paso 1: Crear la clave SSH
+#Paso 2: Crear la instancia EC2 de Wordpress
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id aws_subnet.private2.id \
+  --key-name ssh-mensagl-2025-julio224 \
+  --security-group-ids <sg-cms-id> \
+  --private-ip-address 10.224.3.100 \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=WORDPRESS}]' \
+  --region us-east-1
+
+
+#Paso 3: Copiar archivos de configuración a la instancia a través del Bastion Host (nginx)
+#Dado que la instancia de Wordpress está en una subred privada, necesitamos conectarnos a través del servidor nginx, que actúa como Bastion Host.
+#Copiar la clave SSH:
+scp -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ~/.ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.3.100:/home/ubuntu/clave.pem
+
+#Subir los scripts de instalación:
+scp -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../scripts_servicios/wordpress.sh ubuntu@10.224.3.100:/home/ubuntu/wordpress.sh
+scp -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../scripts_servicios/wordpress2.sh ubuntu@10.224.3.100:/home/ubuntu/wordpress2.sh
+
+#Subir archivo de configuración SSL:
+scp -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../configuraciones_servicios/wordpress/default-ssl.conf ubuntu@10.224.3.100:/home/ubuntu/default-ssl.conf
+
+#Paso 4: Ejecutar la configuración de WordPress en la instancia privada
+ssh -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.3.100 << 'EOF'
+cd ~
+sudo chmod +x wordpress.sh
+sudo ./wordpress.sh
+sleep 180
+sudo -u www-data wp-cli core config --dbname=wordpress --dbuser=wordpress --dbpass=_Admin123 --dbhost=<mysql-endpoint> --dbprefix=wp --path=/var/www/html
+sudo -u www-data wp-cli core install --url='http://224wordpress.duckdns.org' --title='Wordpress equipo 4' --admin_user='equipo4' --admin_password='_Admin123' --admin_email='admin@example.com' --path=/var/www/html
+sudo -u www-data wp-cli plugin install supportcandy --activate --path='/var/www/html'
+sudo -u www-data wp-cli plugin install user-registration --activate --path='/var/www/html'
+sudo -u www-data wp-cli plugin install wps-hide-login --activate --path='/var/www/html'
+sudo -u www-data wp-cli option update wps_hide_login_url equipo4-admin --path='/var/www/html'
+sudo chmod +x wordpress2.sh
+sudo ./wordpress2.sh
+EOF
+
+#==================================#
+#    creacion de Instancia wordpress2
+#==================================#
+
+#Paso 1: Crear la clave SSH (si aún no la tienes)
+
+#Paso 2: Crear la instancia EC2 de Wordpress2
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id aws_subnet.private2.id \
+  --key-name ssh-mensagl-2025-julio224 \
+  --security-group-ids <sg-cms-id> \
+  --private-ip-address 10.224.3.101 \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=WORDPRESS-2}]' \
+  --region us-east-1
+
+#Paso 3: Copiar archivos de configuración a la instancia a través del Bastion Host (nginx)
+#Dado que la instancia de Wordpress2 está en una subred privada, necesitamos conectarnos a través del servidor nginx, que actúa como Bastion Host.
+
+#Copiar la clave SSH:
+scp -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ~/.ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.3.101:/home/ubuntu/clave.pem
+
+#Subir los scripts de instalación:
+scp -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../scripts_servicios/wordpress.sh ubuntu@10.224.3.101:/home/ubuntu/wordpress.sh
+scp -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../scripts_servicios/wordpressbackup.sh ubuntu@10.224.3.101:/home/ubuntu/wordpressbackup.sh
+
+#Subir archivo de configuración SSL:
+scp -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ../configuraciones_servicios/wordpress/default-ssl.conf ubuntu@10.224.3.101:/home/ubuntu/default-ssl.conf
+
+#Paso 4: Ejecutar la configuración de WordPress en la instancia privada
+ssh -o ProxyJump=ubuntu@<nginx-public-ip> -i ~/.ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.3.101 << 'EOF'
+cd ~
+sudo chmod +x wordpress.sh
+sudo ./wordpress.sh
+sleep 180
+sudo -u www-data wp-cli core config --dbname=wordpress --dbuser=wordpress --dbpass=_Admin123 --dbhost=<mysql-endpoint> --dbprefix=wp --path=/var/www/html
+sudo -u www-data wp-cli core install --url='http://224wordpress.duckdns.org' --title='Wordpress equipo 4' --admin_user='admin' --admin_password='_Admin123' --admin_email='admin@example.com' --path=/var/www/html
+sudo -u www-data wp-cli plugin install supportcandy --activate --path='/var/www/html'
+sudo -u www-data wp-cli plugin install user-registration --activate --path='/var/www/html'
+sudo -u www-data wp-cli plugin install wps-hide-login --activate --path='/var/www/html'
+sudo -u www-data wp-cli option update wps_hide_login_url equipo4-admin --path='/var/www/html'
+sudo chmod +x wordpressbackup.sh
+sudo ./wordpressbackup.sh
+EOF
+
+
+#==================================#
+#    creacion de Instancia RDS
+#==================================#
+#Paso 1: Crear el grupo de subredes para RDS
+aws rds create-db-subnet-group \
+  --db-subnet-group-name "mysql_subnet_group" \
+  --db-subnet-group-description "Grupo de subredes para MySQL" \
+  --subnet-ids "<subnet-private1-id>" "<subnet-private2-id>" \
+  --tags Key=Name,Value=mysql-subnet-group
+
+#Paso 2: Crear la instancia RDS MySQL
+aws rds create-db-instance \
+  --db-instance-identifier "mysql-wordpress" \
+  --allocated-storage 10 \
+  --db-instance-class "db.t3.medium" \
+  --engine "mysql" \
+  --engine-version "8.0" \
+  --master-username "wordpress" \
+  --master-user-password "_Admin123" \
+  --db-name "wordpress" \
+  --backup-retention-period 30 \
+  --storage-type "gp2" \
+  --storage-encrypted \
+  --kms-key-id "<kms-key-arn>" \
+  --availability-zone "us-east-1b" \
+  --db-subnet-group-name "mysql_subnet_group" \
+  --vpc-security-group-ids "<sg-mysql-id>" \
+  --publicly-accessible false \
+  --no-multi-az \
+  --no-auto-minor-version-upgrade \
+  --tags Key=Name,Value=MySQL_Wordpress
+
+# =============================================
+# clave KMS para encriptar base de datos de RDS 
+# =============================================
+#Paso 1: Crear la clave KMS
+aws kms create-key \
+  --description "clave de encriptacion para RDS" \
+  --tags TagKey=Name,TagValue="rds-backup-key-julio224"
+
+#aws kms create-key \
+# Después de ejecutar el comando anterior, obtendrás un KeyId en la respuesta JSON. Usa ese KeyId en el siguiente comando:
+aws kms create-alias \
+  --alias-name "alias/rds-backup-key-julio224" \
+  --target-key-id "<kms-key-id>"
+#Importante: Reemplaza <kms-key-id> con el KeyId obtenido en el paso anterior.
+
+# =============================================#
+# instancia servidor XMPP openfire 
+# =============================================#
+# Paso 1: Crear la instancia EC2
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id aws_subnet.private1.id \
+  --security-group-ids <sg-xmpp-id> \
+  --key-name ssh-mensagl-2025-julio224 \
+  --private-ip-address 10.224.2.100 \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=OPENFIRE}]'
+#Reemplaza <subnet-private1-id> y <sg-xmpp-id> con los valores correctos.
+
+#Paso 2: Copiar el script openfire.sh a la instancia
+#Dado que la instancia está en una subred privada, se usa un bastion host (nginx).
+scp -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> \
+  ../scripts_servicios/openfire.sh ubuntu@10.224.2.100:/home/ubuntu/openfire.sh
+
+#Paso 3: Conectarse por SSH y ejecutar el script
+ssh -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> ubuntu@10.224.2.100 << 'EOF'
+  cd /home/ubuntu/
+  sudo chmod +x openfire.sh
+  sudo ./openfire.sh
+EOF
+
+#Debe asegurarse que la clave SSH (.pem) tenga los permisos correctos:
+chmod 400 .ssh/ssh-mensagl-2025-julio224.pem
+
+
+
+# =============================================#
+#instancia Base de datos maestro openfire 
+#============================================#
+
+#Paso 1: Crear la instancia EC2 para XMPP Database Maestro
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id aws_subnet.private1.id \
+  --security-group-ids [aws_security_group.sg_mysql.id] \
+  --key-name ssh-mensagl-2025-julio224 \
+  --private-ip-address 10.224.2.200 \
+  --associate-public-ip-address false \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Mysql_Openfire_maestro}]'
+
+
+#Paso 2: Copiar el archivo openfire.sql a la instancia EC2
+#Dado que la instancia está en una subred privada, utilizamos un bastion host para hacer el salto SSH.
+scp -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> \
+  ../configuraciones_servicios/openfire/openfire.sql ubuntu@10.224.2.200:/home/ubuntu/openfire.sql
+
+#Paso 3: Copiar la clave privada .pem a la instancia EC2
+scp -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> \
+  .ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.2.200:/home/ubuntu/clave.pem
+
+#Paso 4: Copiar el script clustersql.sh a la instancia EC2
+scp -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> \
+  ../scripts_servicios/clustersql.sh ubuntu@10.224.2.200:/home/ubuntu/clustersql.sh
+
+#Paso 5: Ejecutar el script clustersql.sh en la instancia EC2
+ssh -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> ubuntu@10.224.2.200 << 'EOF'
+  cd /home/ubuntu/
+  sudo chmod +x clustersql.sh
+  sudo ./clustersql.sh
+EOF
+
+#Paso 6: Crear un archivo user_data para configurar la instancia
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id <subnet-private1-id> \
+  --security-group-ids <sg-mysql-id> \
+  --key-name ssh-mensagl-2025-julio224 \
+  --private-ip-address 10.224.2.200 \
+  --user-data file://clustersql.sh \
+  --associate-public-ip-address false \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Mysql_Openfire_maestro}]'
+
+#Claves SSH: Asegúrate de que los permisos de las claves SSH sean correctos.
+chmod 400 .ssh/ssh-mensagl-2025-julio224.pem
+
+
+#============================================
+#Replica de base de datos de openfire
+#============================================
+
+
+#Paso 1: Crear la instancia EC2 para la réplica de la base de datos XMPP
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id <subnet-private1-id> \
+  --security-group-ids <sg-mysql-id> \
+  --key-name ssh-mensagl-2025-julio224 \
+  --private-ip-address 10.224.2.201 \
+  --associate-public-ip-address false \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Mysql_Openfire_esclavo}]'
+
+#Paso 2: Copiar la clave privada .pem a la instancia EC2
+scp -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> \
+  .ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.2.201:/home/ubuntu/clave.pem
+
+#Paso 3: Copiar el script clustersql.sh a la instancia EC2
+scp -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> \
+  ../scripts_servicios/clustersql.sh ubuntu@10.224.2.201:/home/ubuntu/clustersql.sh
+
+#Paso 4: Ejecutar el script clustersql.sh en la instancia EC2
+ssh -i .ssh/ssh-mensagl-2025-julio224.pem -o ProxyJump=ubuntu@<nginx-public-ip> ubuntu@10.224.2.201 << 'EOF'
+  cd /home/ubuntu/
+  sudo chmod +x clustersql.sh
+  sudo ./clustersql.sh
+EOF
+
+#Paso 5: Crear un archivo user_data para configurar la instancia
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id <subnet-private1-id> \
+  --security-group-ids <sg-mysql-id> \
+  --key-name ssh-mensagl-2025-julio224 \
+  --private-ip-address 10.224.2.201 \
+  --user-data file://clustersql.sh \
+  --associate-public-ip-address false \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Mysql_Openfire_esclavo}]'
+
+#Claves SSH: Asegúrate de que los permisos de las claves SSH sean correctos.
+chmod 400 .ssh/ssh-mensagl-2025-julio224.pem
+
+
+# ============================
+# Crear Volúmenes EBS
+# ============================
+
+#Paso 1: Crear los volúmenes EBS
+# Crear el volumen EBS 1
+aws ec2 create-volume \
+  --availability-zone us-east-1a \
+  --size 20 \
+  --tag-specifications 'ResourceType=volume,Tags=[{Key=Name,Value=backup-volume-1-julio224}]'
+
+# Crear el volumen EBS 2
+aws ec2 create-volume \
+  --availability-zone us-east-1a \
+  --size 20 \
+  --tag-specifications 'ResourceType=volume,Tags=[{Key=Name,Value=backup-volume-2-julio224}]'
+
+
+# ===========================
+# Servidor NAS
+# ===========================
+
+# Crear la instancia EC2 para el servidor NAS
+aws ec2 run-instances \
+  --image-id ami-053b0d53c279acc90 \
+  --instance-type t2.micro \
+  --subnet-id <subnet-id-private1> \
+  --key-name ssh_key \
+  --security-group-ids <sg-nas-id> \
+  --associate-public-ip-address false \
+  --private-ip-address 10.224.2.150 \
+  --user-data file://path/to/your/nas.sh \
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=NAS}]' \
+  --block-device-mappings 'DeviceName=/dev/sdh,Ebs={VolumeSize=20}' \
+  --region us-east-1
+
+#Subir los archivos (scripts):
+scp -i .ssh/ssh-mensagl-2025-julio224.pem ../scripts_servicios/nas.sh ubuntu@10.224.2.150:/home/ubuntu/nas.sh
+scp -i .ssh/ssh-mensagl-2025-julio224.pem ../scripts_servicios/backups.sh ubuntu@10.224.2.150:/home/ubuntu/backups.sh
+scp -i .ssh/ssh-mensagl-2025-julio224.pem .ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.2.150:/home/ubuntu/clave.pem
+
+#Conectar a la instancia y ejecutar nas.sh:
+ssh -i .ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.2.150 << 'EOF'
+  sudo chmod +x /home/ubuntu/nas.sh
+  sudo /home/ubuntu/nas.sh
+EOF
+
+#Conectar a la instancia y ejecutar backups.sh:
+ssh -i .ssh/ssh-mensagl-2025-julio224.pem ubuntu@10.224.2.150 << 'EOF'
+  sudo chmod +x /home/ubuntu/backups.sh
+  sudo /home/ubuntu/backups.sh
+EOF
+
+# ============================
+# Adjuntar Volúmenes EBS al servidor NAS
+# ============================
+#Adjuntar el volumen 1 al servidor NAS:
+aws ec2 attach-volume \
+  --volume-id <volume-id-volume1> \
+  --instance-id <instance-id-NAS> \
+  --device /dev/sdf \
+  --region us-east-1
+
+#Adjuntar el volumen 2 al servidor NAS:
+aws ec2 attach-volume \
+  --volume-id <volume-id-volume2> \
+  --instance-id <instance-id-NAS> \
+  --device /dev/sdg \
+  --region us-east-1
+
+#Comando completo para ver los volúmenes disponibles (si necesitas identificarlos):
+aws ec2 describe-volumes --region us-east-1
