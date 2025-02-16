@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Creación de VPC, subredes públicas y privadas, NAT Gateway, y tablas de rutas"
+
+Parameters:
+  NombreAlumno:
+    Type: String
+    Default: "julio224"
+    Description: "Nombre para nombrar los recursos"
+
+Resources:
+  # Crear VPC
+  VPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: "10.224.0.0/16"
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-vpc"
+
+  # Crear Subnet pública 1
+  PublicSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.224.1.0/24"
+      AvailabilityZone: "us-east-1a"
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-subnet-public1-us-east-1a"
+
+  # Crear Subnet privada 1
+  PrivateSubnet1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.224.2.0/24"
+      AvailabilityZone: "us-east-1a"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-subnet-private1-us-east-1a"
+
+  # Crear Subnet privada 2
+  PrivateSubnet2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: "10.224.3.0/24"
+      AvailabilityZone: "us-east-1b"
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-subnet-private2-us-east-1b"
+
+  # Crear Gateway de Internet
+  InternetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-igw"
+
+  # Asociar Gateway de Internet a VPC
+  AttachInternetGateway:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Crear IP elástica para NAT Gateway
+  ElasticIP:
+    Type: "AWS::EC2::EIP"
+    Properties:
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-eip"
+
+  # Crear NAT Gateway
+  NATGateway:
+    Type: "AWS::EC2::NatGateway"
+    Properties:
+      AllocationId: !GetAtt ElasticIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-nat"
+
+  # Crear tabla de rutas públicas
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Routes:
+        - DestinationCidrBlock: "0.0.0.0/0"
+          GatewayId: !Ref InternetGateway
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-rtb-public"
+
+  # Asociar subred pública 1 a la tabla de rutas públicas
+  PublicRouteTableAssociation1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  # Crear tabla de rutas privadas 1
+  PrivateRouteTable1:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Routes:
+        - DestinationCidrBlock: "0.0.0.0/0"
+          NatGatewayId: !Ref NATGateway
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-rtb-private1-us-east-1a"
+
+  # Crear tabla de rutas privadas 2
+  PrivateRouteTable2:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref VPC
+      Routes:
+        - DestinationCidrBlock: "0.0.0.0/0"
+          NatGatewayId: !Ref NATGateway
+      Tags:
+        - Key: "Name"
+          Value: !Sub "vpc-mensagl-2025-${NombreAlumno}-rtb-private2-us-east-1b"
+
+  # Asociar subred privada 1 a la tabla de rutas privadas 1
+  PrivateRouteTableAssociation1:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  # Asociar subred privada 2 a la tabla de rutas privadas 2
+  PrivateRouteTableAssociation2:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable2
+
+Outputs:
+  VPCId:
+    Description: "ID de la VPC"
+    Value: !Ref VPC
+
+  PublicSubnet1Id:
+    Description: "ID de la subred pública 1"
+    Value: !Ref PublicSubnet1
+
+  PrivateSubnet1Id:
+    Description: "ID de la subred privada 1"
+    Value: !Ref PrivateSubnet1
+
+  PrivateSubnet2Id:
+    Description: "ID de la subred privada 2"
+    Value: !Ref PrivateSubnet2
+
+
+

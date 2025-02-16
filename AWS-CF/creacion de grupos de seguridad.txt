@@ -1,0 +1,196 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "Grupos de Seguridad para Nginx, CMS, MySQL, NAS y XMPP"
+
+Parameters:
+  VPCID:
+    Type: String
+    Description: "ID de la VPC"
+
+Resources:
+  # Grupo de seguridad para Nginx
+  SGNginx:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "sg_nginx"
+      Description: "Grupo de seguridad para nginx"
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: "10.224.0.0/16"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: "Name"
+          Value: "sg_nginx"
+
+  # Grupo de seguridad para CMS
+  SGCMS:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "sg_cms"
+      Description: "Security group for CMS cluster"
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: "Name"
+          Value: "sg_cms"
+
+  # Grupo de seguridad para MySQL
+  SGMySQL:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "sg_mysql"
+      Description: "Grupo de seguridad para MySQL"
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: "0.0.0.0/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: "Name"
+          Value: "sg_mysql"
+
+  # Grupo de seguridad para NAS
+  SGNAS:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "sg_nas"
+      Description: "Grupo de seguridad para NAS"
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: "Name"
+          Value: "sg_nas"
+
+  # Grupo de seguridad para XMPP Openfire
+  SGXMPP:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupName: "sg_xmpp"
+      Description: "Grupo de seguridad para XMPP Openfire"
+      VpcId: !Ref VPCID
+      SecurityGroupIngress:
+        - IpProtocol: "tcp"
+          FromPort: 22
+          ToPort: 22
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 5222
+          ToPort: 5223
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 9090
+          ToPort: 9091
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 7777
+          ToPort: 7777
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 5262
+          ToPort: 5263
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 5269
+          ToPort: 5270
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 80
+          ToPort: 80
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 443
+          ToPort: 443
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 7443
+          ToPort: 7443
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "tcp"
+          FromPort: 7070
+          ToPort: 7070
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "udp"
+          FromPort: 26001
+          ToPort: 27000
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "udp"
+          FromPort: 50000
+          ToPort: 55000
+          CidrIp: "0.0.0.0/0"
+        - IpProtocol: "udp"
+          FromPort: 9999
+          ToPort: 9999
+          CidrIp: "0.0.0.0/0"
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: "0.0.0.0/0"
+      Tags:
+        - Key: "Name"
+          Value: "sg_xmpp"
+
+Outputs:
+  SGNginxID:
+    Description: "ID del grupo de seguridad para Nginx"
+    Value: !Ref SGNginx
+
+  SGCMSID:
+    Description: "ID del grupo de seguridad para CMS"
+    Value: !Ref SGCMS
+
+  SGMySQLID:
+    Description: "ID del grupo de seguridad para MySQL"
+    Value: !Ref SGMySQL
+
+  SGNASID:
+    Description: "ID del grupo de seguridad para NAS"
+    Value: !Ref SGNAS
+
+  SGXMPPID:
+    Description: "ID del grupo de seguridad para XMPP"
+    Value: !Ref SGXMPP
